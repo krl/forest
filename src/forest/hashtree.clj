@@ -1,25 +1,15 @@
-(ns forest.core
-  (:use     [forest.debug]
-            [clojure.walk :only [postwalk]]
-            [clojure.math.numeric-tower :only [floor]])
-  (:require [digest :as d]
-            [platt.core :as platt]))
+(ns forest.hashtree
+  (:use [forest.debug]
+        [clojure.math.numeric-tower :only [floor]]
+        [forest.vhash]
+        [forest.db]))
 
-(def MAX_HASH (BigInteger. (apply str (repeat 40 "f")) 16))
 (def ^:dynamic *current-transaction* nil)
-
 (def ^:dynamic *bucket-size* 128)
-(def EMPTY_MAP nil)
-
-(defn vhash [value]
-  (BigInteger.
-   (d/sha-1 (pr-str (hash value)))
-   16))
-
-(defrecord DiskMapNode [cut left right number-of-elements])
-(defrecord DiskMapLeaf [cut bucket])
 
 (defrecord ToplevelMap [db reference])
+(defrecord DiskMapNode [cut left right number-of-elements])
+(defrecord DiskMapLeaf [cut bucket])
 
 (defprotocol MapLike
   (get-key            [this key])
@@ -60,7 +50,7 @@
 (extend-type ToplevelMap
   MapLike
   (associate* [this key val]
-    (platt/with-db (:db this)
+    (with-db (:db this)
       (let [ref (vhash
                  (associate*
                   (if (:reference this)
@@ -71,7 +61,7 @@
         (assoc this
           :reference ref))))
   (dissociate* [this key]
-    (platt/with-db (:db this)
+    (with-db (:db this)
       (let [ref (vhash
                  (dissociate*
                   (if (:reference this)
@@ -82,7 +72,7 @@
         (assoc this
           :reference ref))))
   (get-key [this key]
-    (platt/with-db (:db this)
+    (with-db (:db this)
       (when (:reference this)
         (get-key (lookup (:reference this)) key)))))
 
@@ -173,7 +163,7 @@
 (defn lookup [vhash]
   (or (and *current-transaction*
            (get @(:transient *current-transaction*) vhash))
-      (platt/fetch vhash)
+      (fetch vhash)
       (throw (Exception. (str "lookup of vhash " vhash " failed.")))))
 
 (defn set-root-ref! [db ref]
@@ -182,7 +172,7 @@
 (defn get-root-ref [db]
   (or (and *current-transaction*
            (get @(:roots *current-transaction*) db))
-      (platt/fetch :root)))
+      (fetch :root)))
 
 (defn empty-diskmap []
   (DiskMapLeaf.
@@ -194,7 +184,7 @@
 (defn write-recursively [db node]
   ;; (println "writing to db:")
   ;; (print-variables (vhash node) node)
-  (platt/put (vhash node) node)
+  (put (vhash node) node)
   (swap! *write-count* inc)
   (when (:left node)
     (write-recursively db (lookup (:left node)))
@@ -210,8 +200,8 @@ returns the root node reference."
     (let [root-node (get @(:transient *current-transaction*)
                          root-ref)]
       ;; (print-variables db root-ref root-node)
-      (platt/with-db db
-        (platt/put :root root-ref)
+      (with-db db
+        (put :root root-ref)
         (binding [*write-count* (atom 0)]
           (write-recursively db root-node)
           (println "wrote " @*write-count* " nodes"))))))
@@ -263,10 +253,20 @@ returns the root node reference."
    (merge (:bucket left)
           (:bucket right))))
 
+;; constructor
+
+(defonce EMPTY_MAP (empty-diskmap))
+
 (def get-db-from-path 
-  (memoize platt/open-database))
+  (memoize open-database))
 
 (defn diskmap [path]
   (let [db (get-db-from-path path)]
-    (platt/with-db db
-      (forest.core.ToplevelMap. db (platt/fetch :root)))))
+    (with-db db
+      (put (vhash EMPTY_MAP) EMPTY_MAP) ; store reference by default
+      (ToplevelMap. 
+       db
+       (or 
+        (fetch :root)
+        EMPTY_MAP)))))
+

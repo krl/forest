@@ -1,7 +1,7 @@
 (ns forest.core-test
   (:use     [forest.debug])
   (:require [clojure.test :refer :all]
-            [forest.core :refer :all]
+            [forest.hashtree :refer :all]
             [platt.core :as platt]))
 
 (defn random-path []
@@ -24,7 +24,7 @@
     (is (= (get-key second-ref :a) 2))))
 
 (deftest dissociate-in-diskmap
-  (binding [forest.core/*bucket-size* 2]
+  (binding [forest.hashtree/*bucket-size* 2]
     (let [toplevel        (diskmap (random-path))
           with-some-stuff (transact (associate toplevel 
                                                :a 1 :b 2 :c 3))
@@ -34,8 +34,25 @@
                                                 :d :e :f))]
       (is (= with-some-stuff removed-again)))))
 
+(deftest assoc-dissoc
+  (binding [forest.hashtree/*bucket-size* 8]
+    (let [number-range (range 100)
+          empty-map    (diskmap (random-path))
+          assoc-map    (transact
+                         (reduce (fn [diskmap nr]
+                                   (associate diskmap nr nr))
+                                 empty-map
+                                 number-range))
+          dissoc-map   (transact
+                         (reduce (fn [diskmap nr]
+                                   (dissociate diskmap nr))
+                                 assoc-map
+                                 number-range))]
+      (print-variables dissoc-map empty-map)
+      (is (= dissoc-map empty-map)))))
+
 (deftest bucket-overflow
-  (let [number-range (range (inc forest.core/*bucket-size*))
+  (let [number-range (range (inc forest.hashtree/*bucket-size*))
         overflowmap  (transact
                        (reduce (fn [diskmap nr]
                                  (associate diskmap nr nr))
