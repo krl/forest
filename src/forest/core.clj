@@ -23,11 +23,9 @@
 
 (defprotocol MapLike
   (get-key            [this key])
-  (associate          [this key value])
-  (dissociate         [this key])
+  (dissociate*        [this key])
+  (associate*         [this key val])
   (number-of-elements [this]))
-
-;; type extensions
 
 (declare transact
          split-leaf
@@ -39,18 +37,47 @@
          number-of-elements
          opposite
          set-root-ref!
-         get-root-ref)
+         get-root-ref
+         hash-ratio)
+
+;; helper functions
+
+(defn associate [in & kvs]
+  (assert (even? (count kvs)) 
+          "associate requires an even number of key value pairs")
+  (reduce (fn [in [key val]]
+            (associate* in key val))
+          in
+          (partition 2 kvs)))
+
+(defn dissociate [in & keys]
+  (reduce (fn [in key]
+            (dissociate* in key))
+          in keys))
+
+;; type extensions
 
 (extend-type ToplevelMap
   MapLike
-  (associate [this key val]
+  (associate* [this key val]
     (platt/with-db (:db this)
       (let [ref (vhash
-                 (associate
+                 (associate*
                   (if (:reference this)
                     (lookup (:reference this))
                     (empty-diskmap))
                   key val))]
+        (set-root-ref! (:db this) ref)
+        (assoc this
+          :reference ref))))
+  (dissociate* [this key]
+    (platt/with-db (:db this)
+      (let [ref (vhash
+                 (dissociate*
+                  (if (:reference this)
+                    (lookup (:reference this))
+                    (empty-diskmap))
+                  key))]
         (set-root-ref! (:db this) ref)
         (assoc this
           :reference ref))))
@@ -63,7 +90,7 @@
   MapLike
   (get-key [this key]
     (get (:bucket this) key))
-  (associate [this key value]
+  (associate* [this key value]
     ;; (println "associate in leaf")
     (let [new-bucket (assoc (:bucket this) key value)
           new-node
@@ -73,9 +100,11 @@
             (assoc this :bucket new-bucket))]
       (store! new-node)
       new-node))
-  (dissociate [this key]    
-    (assoc this :bucket 
-           (dissoc (:bucket this) key)))
+  (dissociate* [this key]
+    (let [new-bucket (dissoc (:bucket this) key)
+          new-node   (assoc this :bucket new-bucket)]
+      (store! new-node)
+      new-node))
   (number-of-elements [this]
     (count (:bucket this))))
 
@@ -87,13 +116,13 @@
                       :left :right)]
       ;;(print-variables key direction)
       (get-key (lookup (direction this)) key)))
-  (associate [this key value]
+  (associate* [this key value]
     ;; (println "associate in node")
     (let [direction (if (< (hash-ratio (vhash key))
                            (:cut this))
                       :left :right)
           old-leaf  (lookup (direction this))
-          new-leaf  (associate old-leaf key value)
+          new-leaf  (associate* old-leaf key value)
           new-node  (assoc this 
                       direction           (vhash new-leaf)
                       :number-of-elements (if (= (number-of-elements old-leaf)
@@ -102,27 +131,30 @@
                                             (inc (:number-of-elements this))))]
       (store! new-node new-leaf)
       new-node))
-  (dissociate [this key]
+  (dissociate* [this key]
+    (println "dissoc in node")
     (let [direction    (if (< (hash-ratio (vhash key))
                               (:cut this)) :left :right)
           old-leaf     (lookup (direction this))
-          new-leaf     (dissociate old-leaf key)
+          new-leaf     (dissociate* old-leaf key)
 
           new-node
-          (cond (= (number-of-elements old-leaf)
-                   (number-of-elements new-leaf))
-                this
-                
-                (= (:number-of-elements this) (inc *bucket-size*))
-                (merge-leaves (:cut this)
-                              new-leaf
-                              (lookup ((opposite direction) this)))
+          (cond 
+            ;; nothing was removed
+            (= (number-of-elements old-leaf)
+               (number-of-elements new-leaf))
+            this                
+            ;; the previous size of the node was just above bucket size
+            (= (:number-of-elements this) (inc *bucket-size*))
+            (merge-leaves (:cut this)
+                          new-leaf
+                          (lookup ((opposite direction) this)))
 
-                :else
-                (assoc this 
-                  direction new-leaf
-                  :number-of-elements (dec (:number-of-elements this))))]
-      (store! new-node new-leaf)
+            :else
+            (assoc this 
+              direction (vhash new-leaf)
+              :number-of-elements (dec (:number-of-elements this))))]
+      (store! new-node)
       new-node))
   (number-of-elements [this]
     (:number-of-elements this)))
@@ -195,25 +227,14 @@ returns the root node reference."
 (defn split-map
   "Splits a map in two based on key hash."
   [to-split cut]
-  (let [;; keyhashes (map (fn [[key _]] (vhash key)) to-split)
-        ;; _         (dbg (readable-hash (apply min keyhashes)))
-        ;; _         (dbg (readable-hash (apply max keyhashes)))
-        pred (fn [[key _]]
-               ;; (println "----")
-               ;; (println (readable-hash (vhash key)))
-               ;; (println (readable-hash cut))
+  (let [pred (fn [[key _]]
                (< (hash-ratio (vhash key)) cut))]
     [(into {} (filter pred to-split))
      (into {} (remove pred to-split))]))
 
 (defn hash-ratio [nr]
-  (/ 
-   (float (floor    
-           (/ nr
-              10000000000)))
-   (float (floor
-           (/ MAX_HASH 
-              10000000000)))))
+  (/ (float (floor (/ nr       10000000000)))
+     (float (floor (/ MAX_HASH 10000000000)))))
 
 (defn split-ratio [ratio]
   (let [offset (/ 1 (int (* (denominator ratio) 2)))]
@@ -230,29 +251,17 @@ returns the root node reference."
                                     cut
                                     (vhash left-leaf)
                                     (vhash right-leaf)
-                                    (inc *bucket-size*))]
-
-    ;; (println "diff1" (readable-hash (- left-cut cut)))
-    ;; (println "diff2" (readable-hash (- right-cut cut)))
-
-    ;; (println "splitting" 
-    ;;          (readable-hash cut)
-    ;;          "into" 
-    ;;          (readable-hash left-cut)
-    ;;          "and" 
-    ;;          (readable-hash right-cut))
-    
-    (if-not (< left-cut cut right-cut)
-      (print-variables left-cut cut right-cut))    
-
-    (store! new-node left-leaf right-leaf)
+                                    (inc *bucket-size*))]    
+    (store! left-leaf right-leaf)
     new-node))
 
 (defn merge-leaves [cut left right]
   ;; (println "merging")
-  (DiskMapLeaf. 
-   cut (merge (:bucket left)
-              (:bucket right))))
+  ;; (print-variables cut left right)
+  (DiskMapLeaf.
+   cut 
+   (merge (:bucket left)
+          (:bucket right))))
 
 (def get-db-from-path 
   (memoize platt/open-database))
