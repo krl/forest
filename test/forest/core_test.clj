@@ -33,11 +33,15 @@
     (is (every? #(= (get-key overflowmap %) %)
                 number-range))))
 
-;; (deftest massive!
-(binding [forest.core/*bucket-size* 128]
-  (time (let [number-range (range 1000)
-              overflowmap  (transact
-                             (reduce (fn [diskmap nr]
-                                       (associate diskmap nr nr))
-                                     (diskmap (random-path))
-                                     number-range))])))
+
+(deftest lotsa-key-values
+  (let [number-range (range 1000)
+        overflowmap  (transact
+                       (reduce (fn [diskmap nr]
+                                 (associate diskmap nr nr))
+                               (diskmap (random-path))
+                               number-range))]
+    (is (every? #(= (get-key overflowmap %) %)
+                number-range))))
+
+(comment (run-tests))
