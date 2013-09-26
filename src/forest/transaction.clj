@@ -31,12 +31,11 @@
   "Takes a node and writes it to the database. If the node has children, recurse on them."
   [node]
   (put (vhash node) node)
-  (swap! *write-count* inc)
   (when (:left node)
     (write-recursively (lookup (:left node)))
     (write-recursively (lookup (:right node)))))
 
-(defn- write-transaction
+(defn write-transaction
   "Writes all nodes in transaction heap referenced from transaction roots to disk
 returns the root node reference."
   []
@@ -45,8 +44,7 @@ returns the root node reference."
                          root-ref)]
       (with-db db
         (put :root root-ref)
-        (binding [*write-count* (atom 0)]
-          (write-recursively root-node))))))
+        (write-recursively root-node)))))
 
 (defmacro transact
   "Macro to set up a transaction, only the final value of the top level trees

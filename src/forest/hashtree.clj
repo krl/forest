@@ -196,7 +196,7 @@ The leaves are stored in the transaction"
 
 (defonce EMPTY_MAP (empty-diskmap))
 
-(def- get-db-from-path
+(def get-db-from-path
   (memoize open-database))
 
 (defn diskmap
