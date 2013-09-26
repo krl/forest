@@ -1,30 +1,25 @@
+# Forest
 
+On-disk persistent functional datastructures for Clojure.
 
-Forest is a set of on-disk persistent datastructures.
+Uses a key-value store as backend, storing maps as hash-trees. Any historical state of the datastructures can be looked up in Olog(n) time, every association or dissociation returns a new top-level map, the old version can still be freely referenced. Just like Clojure datastructures.
 
-The objects we work with are typed references with a hash-id.
+Check out the tests for how it works.
 
-(def x (DiskMap. {}))
+# Example
 
-(def new-map 
-		 (transact x
-		   (assoc :lol 3)
-		   (assoc :lol 3)
+From ns forest.hashtree-test
 
-The empty map is hash0, an assoc :lol 3 to this map produces the diskmap equal to
-{:lol 3}. This is internally represented as a tree. In order to lookup keys in very large maps, only log(n) nodes will have to be touched.
+    (deftest keep-reference
+      (let [toplevel   (diskmap (random-path))
+            first-ref  (transact
+                         (associate toplevel :a 1))
+            second-ref (transact
+                         (associate first-ref :a 2))]
+        (is (= (get-key first-ref  :a) 1))
+        (is (= (get-key second-ref :a) 2))))
 
-one leaf of the DiskMap tree contains up to N keys, ordered by the hash of the key.
-when the keys overflow
+# TODO
 
-DiskMapLeaf
-
-key-values
-a bucket of max BUCKET_MAX_SIZE size.
-([key1 val1] [key2 val2])
-
-DiskMapNode
-cut   : hash value that cuts the children in half
-left  : reference to left child
-right : reference to right child
-
+* Red-black trees for sorted sequences.
+* Have the top-level map keep such a sequence of its prior states.
