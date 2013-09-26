@@ -1,5 +1,6 @@
-(ns forest.core-test
-  (:use     [forest.debug])
+(ns forest.hashtree-test
+  (:use     [forest.debug]
+            [forest.transaction])
   (:require [clojure.test :refer :all]
             [forest.hashtree :refer :all]
             [platt.core :as platt]))
@@ -11,7 +12,7 @@
   (let [toplevel   (diskmap (random-path))
         associated
         (transact
-          (associate toplevel :a 1))]
+          (associate (dbg toplevel) :a 1))]
     (is (= (get-key associated :a)) 1)))
 
 (deftest keep-reference
@@ -28,7 +29,7 @@
     (let [toplevel        (diskmap (random-path))
           with-some-stuff (transact (associate toplevel 
                                                :a 1 :b 2 :c 3))
-          with-more-stuff (transact (associate with-some-stuff
+          with-more-stuff (transact (associate with-some-stuff 
                                                :d 4 :e 5 :f 6))
           removed-again   (transact (dissociate with-more-stuff
                                                 :d :e :f))]
@@ -48,7 +49,6 @@
                                    (dissociate diskmap nr))
                                  assoc-map
                                  number-range))]
-      (print-variables dissoc-map empty-map)
       (is (= dissoc-map empty-map)))))
 
 (deftest bucket-overflow

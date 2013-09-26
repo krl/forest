@@ -44,5 +44,11 @@
                (print-indented (str "result of " '~name ": ") result#)
                result#)))))))
 
-
-
+(defmacro dbg-let [bindings & body]
+  (first 
+   (reduce (fn [build [var value]]
+             `((let [~var ~value]
+                 (println "let " '~var " be " ~value)
+                 ~@build)))
+           body
+           (reverse (partition 2 bindings)))))

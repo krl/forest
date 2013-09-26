@@ -2,9 +2,9 @@
   (:use [forest.debug]
         [clojure.math.numeric-tower :only [floor]]
         [forest.vhash]
-        [forest.db]))
+        [forest.db]
+        [forest.transaction]))
 
-(def ^:dynamic *current-transaction* nil)
 (def ^:dynamic *bucket-size* 128)
 
 (defrecord ToplevelMap [db reference])
@@ -17,22 +17,17 @@
   (associate*         [this key val])
   (number-of-elements [this]))
 
-(declare transact
-         split-leaf
+(declare split-leaf
          merge-leaves
          empty-diskmap
-         lookup
-         store!
-         set-transaction-root! 
          number-of-elements
          opposite
-         set-root-ref!
-         get-root-ref
          hash-ratio)
 
 ;; helper functions
 
 (defn associate [in & kvs]
+  ;; (println "associate")
   (assert (even? (count kvs)) 
           "associate requires an even number of key value pairs")
   (reduce (fn [in [key val]]
@@ -50,12 +45,12 @@
 (extend-type ToplevelMap
   MapLike
   (associate* [this key val]
+    ;; (println "top level associate")
+    ;; (print-variables this key val)
     (with-db (:db this)
       (let [ref (vhash
                  (associate*
-                  (if (:reference this)
-                    (lookup (:reference this))
-                    (empty-diskmap))
+                  (lookup (:reference this))
                   key val))]
         (set-root-ref! (:db this) ref)
         (assoc this
@@ -107,7 +102,8 @@
       ;;(print-variables key direction)
       (get-key (lookup (direction this)) key)))
   (associate* [this key value]
-    ;; (println "associate in node")
+    ;; (println "associate in nodel")
+    ;; (print-variables :test)
     (let [direction (if (< (hash-ratio (vhash key))
                            (:cut this))
                       :left :right)
@@ -122,7 +118,7 @@
       (store! new-node new-leaf)
       new-node))
   (dissociate* [this key]
-    (println "dissoc in node")
+    ;; (println "dissoc in node")
     (let [direction    (if (< (hash-ratio (vhash key))
                               (:cut this)) :left :right)
           old-leaf     (lookup (direction this))
@@ -152,67 +148,10 @@
 (defn opposite [dir]
   (if (= dir :left) :right :left))
 
-(defn store!
-  "Stores nodes in the transaction transient."
-  [& nodes]
-  (doseq [node nodes]
-    (swap! (:transient *current-transaction*)
-           assoc!
-           (vhash node) node)))
-
-(defn lookup [vhash]
-  (or (and *current-transaction*
-           (get @(:transient *current-transaction*) vhash))
-      (fetch vhash)
-      (throw (Exception. (str "lookup of vhash " vhash " failed.")))))
-
-(defn set-root-ref! [db ref]
-  (swap! (:roots *current-transaction*) assoc db ref))
-
-(defn get-root-ref [db]
-  (or (and *current-transaction*
-           (get @(:roots *current-transaction*) db))
-      (fetch :root)))
-
 (defn empty-diskmap []
   (DiskMapLeaf.
    1/2
    (sorted-map-by #(> (hash %1) (hash %2)))))
-
-(def ^:dynamic *write-count*)
-
-(defn write-recursively [db node]
-  ;; (println "writing to db:")
-  ;; (print-variables (vhash node) node)
-  (put (vhash node) node)
-  (swap! *write-count* inc)
-  (when (:left node)
-    (write-recursively db (lookup (:left node)))
-    (write-recursively db (lookup (:right node)))))
-
-(defn write-transaction
-  "Writes all nodes in transient referenced from transaction roots to disk
-returns the root node reference."
-  []
-  ;; (print-variables *current-transaction*)
-  (println "heap size: " (count @(:transient *current-transaction*)))
-  (doseq [[db root-ref] @(:roots *current-transaction*)]
-    (let [root-node (get @(:transient *current-transaction*)
-                         root-ref)]
-      ;; (print-variables db root-ref root-node)
-      (with-db db
-        (put :root root-ref)
-        (binding [*write-count* (atom 0)]
-          (write-recursively db root-node)
-          (println "wrote " @*write-count* " nodes"))))))
-
-(defmacro transact [& body]
-  `(binding [*current-transaction*
-             {:roots      (atom {})
-              :transient  (atom (transient {}))}]
-     (let [result# (do ~@body)]
-       (write-transaction)
-       result#)))
 
 (defn split-map
   "Splits a map in two based on key hash."
@@ -261,12 +200,11 @@ returns the root node reference."
   (memoize open-database))
 
 (defn diskmap [path]
-  (let [db (get-db-from-path path)]
-    (with-db db
-      (put (vhash EMPTY_MAP) EMPTY_MAP) ; store reference by default
+  (transact
+    (let [db (get-db-from-path path)]
+      (store! db EMPTY_MAP)
+      (set-root-ref! db (vhash EMPTY_MAP))
       (ToplevelMap. 
        db
-       (or 
-        (fetch :root)
-        EMPTY_MAP)))))
-
+       ;; (or (try (lookup :root))
+       (vhash EMPTY_MAP)))))
