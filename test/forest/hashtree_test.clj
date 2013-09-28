@@ -1,74 +1,83 @@
 (ns forest.hashtree-test
   (:use     [forest.debug]
+            [forest.root]
             [forest.transaction])
   (:require [clojure.test :refer :all]
             [forest.hashtree :refer :all]
             [platt.core :as platt]))
 
-(defn random-path []
-  (str "/tmp/forest-test-" (rand)))
-
 (deftest simple-associate
-  (let [toplevel   (diskmap (random-path))
-        associated
-        (transact
-          (associate (dbg toplevel) :a 1))]
-    (is (= (get-key associated :a)) 1)))
+  (transact
+    (let [toplevel   (get-test-root)
+          associated
+          (associate (dbg toplevel) :a 1)]
+      (is (= (get-key associated :a)) 1))))
 
 (deftest keep-reference
-  (let [toplevel   (diskmap (random-path))
-        first-ref  (transact
-                     (associate toplevel :a 1))
-        second-ref (transact
-                     (associate first-ref :a 2))]
-    (is (= (get-key first-ref  :a) 1))
-    (is (= (get-key second-ref :a) 2))))
+  (transact
+    (let [toplevel   (get-test-root)
+          first-ref  (associate toplevel :a 1)
+          second-ref (associate first-ref :a 2)]
+      (is (= (get-key first-ref  :a) 1))
+      (is (= (get-key second-ref :a) 2)))))
 
 (deftest dissociate-in-diskmap
   (binding [forest.hashtree/*bucket-size* 2]
-    (let [toplevel        (diskmap (random-path))
-          with-some-stuff (transact (associate toplevel 
-                                               :a 1 :b 2 :c 3))
-          with-more-stuff (transact (associate with-some-stuff 
-                                               :d 4 :e 5 :f 6))
-          removed-again   (transact (dissociate with-more-stuff
-                                                :d :e :f))]
-      (is (= with-some-stuff removed-again)))))
+    (transact
+      (let [toplevel        (get-test-root)
+            with-some-stuff (associate toplevel 
+                                       :a 1 :b 2 :c 3)
+            with-more-stuff (associate with-some-stuff 
+                                       :d 4 :e 5 :f 6)
+            removed-again   (dissociate with-more-stuff
+                                        :d :e :f)]
+      (is (= with-some-stuff removed-again))))))
 
 (deftest assoc-dissoc
-  (binding [forest.hashtree/*bucket-size* 8]
-    (let [number-range (range 100)
-          empty-map    (diskmap (random-path))
-          assoc-map    (transact
-                         (reduce (fn [diskmap nr]
+  (transact
+    (binding [forest.hashtree/*bucket-size* 8]
+      (let [number-range (range 100)
+            empty-map    (get-test-root)
+            assoc-map    (reduce (fn [diskmap nr]
                                    (associate diskmap nr nr))
                                  empty-map
-                                 number-range))
-          dissoc-map   (transact
-                         (reduce (fn [diskmap nr]
+                                 number-range)
+            dissoc-map   (reduce (fn [diskmap nr]
                                    (dissociate diskmap nr))
                                  assoc-map
-                                 number-range))]
-      (is (= dissoc-map empty-map)))))
+                                 number-range)]
+        (is (= dissoc-map empty-map))))))
 
 (deftest bucket-overflow
-  (let [number-range (range (inc forest.hashtree/*bucket-size*))
-        overflowmap  (transact
-                       (reduce (fn [diskmap nr]
+  (transact
+    (let [number-range (range (inc forest.hashtree/*bucket-size*))
+          overflowmap  (reduce (fn [diskmap nr]
                                  (associate diskmap nr nr))
-                               (diskmap (random-path))
-                               number-range))]
+                               (get-test-root)
+                               number-range)]
     (is (every? #(= (get-key overflowmap %) %)
-                number-range))))
+                number-range)))))
 
 (deftest lotsa-key-values
-  (let [number-range (range 1000)
-        overflowmap  (transact
-                       (reduce (fn [diskmap nr]
+  (transact
+    (let [number-range (range 1000)
+          overflowmap  (reduce (fn [diskmap nr]
                                  (associate diskmap nr nr))
-                               (diskmap (random-path))
-                               number-range))]
-    (is (every? #(= (get-key overflowmap %) %)
-                number-range))))
+                               (get-test-root)
+                               number-range)]
+      (is (every? #(= (get-key overflowmap %) %)
+                  number-range)))))
+
+(deftest nested-maps
+  (transact
+    (let [toplevel  (get-test-root)
+          populated (associate-in toplevel [:test :a]
+                      :x 3)]
+      (is (=
+           (-> populated
+               (get-key :test)
+               (get-key :a)
+               (get-key :x))
+           3)))))
 
 (comment (run-tests))

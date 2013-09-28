@@ -5,6 +5,9 @@
 
 (def ^:dynamic *current-transaction* nil)
 
+(defn in-transaction? []
+  *current-transaction*)
+
 (defn set-root-ref!
   "Sets the root reference for this database, only nodes refered from this will be written to disk."
   [db ref]

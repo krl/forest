@@ -7,7 +7,6 @@
 
 (def ^:dynamic *bucket-size* 128)
 
-(defrecord ToplevelMap [db reference])
 (defrecord DiskMapNode [cut left right number-of-elements])
 (defrecord DiskMapLeaf [cut bucket])
 
@@ -24,49 +23,7 @@
          opposite
          hash-ratio)
 
-;; helper functions
-
-(defn associate [in & kvs]
-  (assert (even? (count kvs)) 
-          "associate requires an even number of key value pairs")
-  (reduce (fn [in [key val]]
-            (associate* in key val))
-          in
-          (partition 2 kvs)))
-
-(defn dissociate [in & keys]
-  (reduce (fn [in key]
-            (dissociate* in key))
-          in keys))
-
 ;; type extensions
-
-(extend-type ToplevelMap
-  MapLike
-  (associate* [this key val]
-    (with-db (:db this)
-      (let [ref (vhash
-                 (associate*
-                  (lookup (:reference this))
-                  key val))]
-        (set-root-ref! (:db this) ref)
-        (assoc this
-          :reference ref))))
-  (dissociate* [this key]
-    (with-db (:db this)
-      (let [ref (vhash
-                 (dissociate*
-                  (if (:reference this)
-                    (lookup (:reference this))
-                    (empty-diskmap))
-                  key))]
-        (set-root-ref! (:db this) ref)
-        (assoc this
-          :reference ref))))
-  (get-key [this key]
-    (with-db (:db this)
-      (when (:reference this)
-        (get-key (lookup (:reference this)) key)))))
 
 (extend-type DiskMapLeaf
   MapLike
@@ -140,14 +97,14 @@
 (defn- opposite [dir]
   (if (= dir :left) :right :left))
 
-(defn- empty-diskmap
+(defn empty-diskmap
   "Returns an empty diskmap leaf"
   []
   (DiskMapLeaf.
    1/2
    (sorted-map-by #(> (hash %1) (hash %2)))))
 
-(defn- split-map
+ (defn- split-map
   "Splits a map in two based on key hash."
   [to-split cut]
   (let [pred (fn [[key _]]
@@ -155,19 +112,19 @@
     [(into {} (filter pred to-split))
      (into {} (remove pred to-split))]))
 
-(defn- hash-ratio
+ (defn- hash-ratio
   "Calculates a value between 0 and 1 based on vhash"
   [vhash]
   (/ (float (floor (/ vhash    10000000000)))
      (float (floor (/ MAX_HASH 10000000000)))))
 
-(defn- split-ratio
+ (defn- split-ratio
   "Calculates two new split ratios from argument."
   [ratio]
   (let [offset (/ 1 (int (* (denominator ratio) 2)))]
     (list (- ratio offset) (+ ratio offset))))
 
-(defn- split-leaf
+ (defn- split-leaf
   "Takes a leaf and returns a node pointing to two new leaves.
 The leaves are stored in the transaction"
   [cut bucket]
@@ -184,26 +141,10 @@ The leaves are stored in the transaction"
     (store! left-leaf right-leaf)
     new-node))
 
-(defn- merge-leaves
+ (defn- merge-leaves
   "Takes two leaves and merges them together. Returns the new leaf."
   [cut left right]
   (DiskMapLeaf.
    cut 
    (merge (:bucket left)
           (:bucket right))))
-
-;; constructor
-
-(defonce EMPTY_MAP (empty-diskmap))
-
-(def get-db-from-path
-  (memoize open-database))
-
-(defn diskmap
-  "Main entry point for referencing a top-level diskmap"
-  [path]
-  (transact
-    (let [db (get-db-from-path path)]
-      (store! db EMPTY_MAP)
-      (set-root-ref! db (vhash EMPTY_MAP))
-      (ToplevelMap. db (vhash EMPTY_MAP)))))
