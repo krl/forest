@@ -10,8 +10,8 @@
   (transact
     (let [toplevel   (get-test-root)
           associated
-          (associate (dbg toplevel) :a 1)]
-      (is (= (get-key associated :a)) 1))))
+          (associate toplevel :a 1)]
+      (is (= (get-key associated :a) 1)))))
 
 (deftest keep-reference
   (transact
@@ -22,7 +22,7 @@
       (is (= (get-key second-ref :a) 2)))))
 
 (deftest dissociate-in-diskmap
-  (binding [forest.hashtree/*bucket-size* 2]
+  (binding [forest.hashtree/*bucket-size* 4]
     (transact
       (let [toplevel        (get-test-root)
             with-some-stuff (associate toplevel 
@@ -31,22 +31,22 @@
                                        :d 4 :e 5 :f 6)
             removed-again   (dissociate with-more-stuff
                                         :d :e :f)]
-      (is (= with-some-stuff removed-again))))))
+        (= with-some-stuff removed-again)))))
 
 (deftest assoc-dissoc
   (transact
     (binding [forest.hashtree/*bucket-size* 8]
-      (let [number-range (range 100)
-            empty-map    (get-test-root)
+      (let [number-range (range 2)
+            root         (get-test-root)
             assoc-map    (reduce (fn [diskmap nr]
                                    (associate diskmap nr nr))
-                                 empty-map
+                                 root
                                  number-range)
             dissoc-map   (reduce (fn [diskmap nr]
                                    (dissociate diskmap nr))
                                  assoc-map
                                  number-range)]
-        (is (= dissoc-map empty-map))))))
+        (is (= dissoc-map root))))))
 
 (deftest bucket-overflow
   (transact
@@ -70,14 +70,11 @@
 
 (deftest nested-maps
   (transact
-    (let [toplevel  (get-test-root)
-          populated (associate-in toplevel [:test :a]
-                      :x 3)]
-      (is (=
-           (-> populated
-               (get-key :test)
-               (get-key :a)
-               (get-key :x))
-           3)))))
+    (let [toplevel     (get-test-root)
+          populated    (associate-in toplevel [:test :a] :x 3)
+          firstval     (get-key populated :test)
+          secondval    (get-key firstval :a)
+          thirdval     (get-key secondval :x)]
+      (is (= thirdval 3)))))
 
 (comment (run-tests))
