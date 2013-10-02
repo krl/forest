@@ -10,33 +10,32 @@
 
 (defn set-root-ref!
   "Sets the root reference for this database, only nodes refered from this will be written to disk."
-  [db ref]
-  (swap! (:roots *current-transaction*) assoc db ref))
+  [transaction ref]
+  (swap! (:roots transaction) assoc (:db transaction) ref))
 
 (defn store!
   "Stores nodes in the transaction heap."
-  [& nodes]
+  [transaction & nodes]
   (doseq [node nodes]
-    (swap! (:heap *current-transaction*)
+    (swap! (:heap transaction)
            assoc
            (vhash node) node)))
 
 (defn lookup
   "Looks up a hash reference, either in the transaction heap or from disk."
-  [vhash]
-  (or (and *current-transaction*
-           (get @(:heap *current-transaction*) vhash))
-      (fetch vhash)
+  [transaction vhash]
+  (or (get @(:heap transaction) vhash)
+      (fetch (:db transaction) vhash)
       (throw (Exception.
               (str "lookup of vhash " vhash " failed.")))))
 
 (defn- write-recursively 
   "Takes a node and writes it to the database. If the node has children, recurse on them."
-  [node]
+  [transaction node]
   (put (vhash node) node)
   (when (:left node)
-    (write-recursively (lookup (:left node)))
-    (write-recursively (lookup (:right node)))))
+    (write-recursively transaction (lookup transaction (:left node)))
+    (write-recursively transaction (lookup transaction (:right node)))))
 
 (defn write-transaction
   "Writes all nodes in transaction heap referenced from transaction roots to disk
@@ -47,7 +46,7 @@ returns the root node reference."
                          root-ref)]
       (with-db db
         (put :root root-ref)
-        (write-recursively root-node)))))
+        (write-recursively *current-transaction* root-node)))))
 
 (defmacro transact
   "Macro to set up a transaction, only the final value of the top level trees
