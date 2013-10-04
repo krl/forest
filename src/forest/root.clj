@@ -52,7 +52,7 @@
 (defn disjoin [in & elements]
   (assert (in-transaction?) "conjoin must be called inside a transaction")
   (reduce (fn [top sortable]
-            (conjoin* top *current-transaction* sortable))
+            (disjoin* top *current-transaction* sortable))
           in
           elements))
 
