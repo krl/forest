@@ -9,7 +9,8 @@
 (defprotocol SeqLike
   (conjoin* [this transaction sortable])
   (disjoin* [this transaction sortable])
-  (get-seq* [this transaction start end reverse?]))
+  (get-seq* [this transaction start end reverse?])
+  (number-of-elements [this]))
 
 (defprotocol MapLike
   (get-key*           [this transaction key])
@@ -20,6 +21,9 @@
 (defrecord Root [db reference])
 
 ;; helper functions
+
+(defn opposite [dir]
+  (if (= dir :left) :right :left))
 
 (defn get-key [in key]
   (assert (in-transaction?) "get-key must be called inside a transaction")  
@@ -39,6 +43,13 @@
           (partition 2 kvs)))
 
 (defn conjoin [in & elements]
+  (assert (in-transaction?) "conjoin must be called inside a transaction")
+  (reduce (fn [top sortable]
+            (conjoin* top *current-transaction* sortable))
+          in
+          elements))
+
+(defn disjoin [in & elements]
   (assert (in-transaction?) "conjoin must be called inside a transaction")
   (reduce (fn [top sortable]
             (conjoin* top *current-transaction* sortable))

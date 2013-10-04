@@ -23,9 +23,6 @@
   (sort-bucket (conj (remove-from-bucket bucket (first element))
                      element)))
 
-(defn- opposite [dir]
-  (if (= dir :left) :right :left))
-
 (defn empty-diskmap
   "Returns an empty diskmap leaf"
   []
@@ -140,7 +137,6 @@ The leaves are stored in the transaction"
             (merge-leaves (:cut this)
                           new-leaf
                           (lookup transaction ((opposite direction) this)))
-
             :else
             (assoc this 
               direction (vhash new-leaf)
