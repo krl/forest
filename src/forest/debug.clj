@@ -48,7 +48,8 @@
   (first 
    (reduce (fn [build [var value]]
              `((let [~var ~value]
-                 (println "let " '~var " be " ~value)
+                 (println "let " '~var " be:")
+                 (pprint  ~value)
                  ~@build)))
            body
            (reverse (partition 2 bindings)))))
