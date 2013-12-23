@@ -10,10 +10,16 @@
 (defrecord RedBlackLeaf [bucket])
 (defrecord Sortable [sort-value value])
 
+(defn opposite [na]
+  (if (= na :left)
+    :right
+    :left))
+
 (defprotocol RedBlack
-  "Methods that are specific for red black trees."
+  "Methods specific for red black trees."
   (balance [this store])
-  (conjoin-nonroot [this store sortable]))
+  (conjoin-nonroot [this store sortable])
+  (disjoin-nonroot [this store sortable]))
 
 (def empty-tree (RedBlackLeaf. []))
 
@@ -31,7 +37,7 @@
 
 (defn- merge-leaves
   "Takes two leaves and merges them together. Returns the new leaf."
-  [branch cut left right]
+  [left right]
   (RedBlackLeaf.
    (sort-elements (concat (:bucket left) (:bucket right)))))
   
@@ -101,19 +107,26 @@
   RedBlack
   (balance [this _] this)
   (conjoin-nonroot [this store sortable]
-    (conjoin* this store sortable))
-  
+    (let [new-bucket (add-to-bucket (:bucket this) sortable)]
+      (if (> (count new-bucket)
+             *bucket-size*)
+        (split-leaf store (assoc this :bucket new-bucket))
+        (assoc this :bucket new-bucket))))
+
+  (disjoin-nonroot [this store sortable]
+    (assoc this
+      :bucket (remove-from-bucket (:bucket this) sortable)))
+
   Stored
   (store! [this store]
     (to-disk! store this))
 
   CollectionLike
   (conjoin* [this store sortable]
-    (let [new-bucket (add-to-bucket (:bucket this) sortable)]
-      (if (> (count new-bucket)
-             *bucket-size*)        
-        (split-leaf store (assoc this :bucket new-bucket))
-        (assoc this :bucket new-bucket))))
+    ;; at root, always black
+    (assoc (balance (conjoin-nonroot this store sortable) store)
+      :color :black))
+
   (disjoin* [this store sortable]
     (assoc this 
       :bucket (remove-from-bucket (:bucket this) sortable)))
@@ -200,7 +213,27 @@
                                               sortable)
                              store)]
       (to-heap! store new-node)
-      (assoc this direction (vhash new-node))))  
+      (assoc this direction (vhash new-node))))
+
+  (disjoin-nonroot [this store sortable]
+    (let [direction (if (< (:sort-value sortable)
+                           (:cut this))
+                      :left :right)
+          old-node  (lookup store (direction this))
+          new-node  (balance (disjoin-nonroot old-node
+                                              store
+                                              sortable)
+                             store)]
+      (if (and (= (number-of-elements this) *bucket-size*)
+               (> (number-of-elements old-node)
+                  (number-of-elements new-node)))
+        (let [joined-leaf (merge-leaves new-node
+                                   (lookup store ((opposite direction) this)))]
+          (to-heap! store joined-leaf)
+          joined-leaf)
+        (do
+          (to-heap! store new-node)
+          (assoc this direction (vhash new-node))))))
 
   Stored
   (store! [this store]
@@ -212,6 +245,10 @@
   (conjoin* [this store sortable]
     ;; at root, always black
     (assoc (balance (conjoin-nonroot this store sortable) store)
+      :color :black))
+  (disjoin* [this store sortable]
+    ;; at root, always black
+    (assoc (balance (disjoin-nonroot this store sortable) store)
       :color :black))
 
   Rangeable

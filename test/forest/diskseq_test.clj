@@ -4,6 +4,21 @@
             [forest.diskseq])
   (:require [clojure.test :refer :all]))
 
+(def vis-atom (atom nil))
+
+(comment (visualize-atom vis-atom))
+
+(binding [forest.redblack/*bucket-size* 1]
+  (reset! 
+   vis-atom
+   (disjoin 
+    (reduce (fn [coll new]
+              (conjoin coll new))
+            (get-test-root (diskseq identity))
+            (shuffle (range 4)))
+    3
+    )))
+
 (deftest counting-test
   (let [test-number-of-elements 64
         randomly-populated-bucket-size-1

@@ -20,6 +20,14 @@
                 store
                 (make-sortable (eval (:sort-fn this))
                                element))))
+  (disjoin* [this store element]
+    (assoc this
+      :value
+      (disjoin* (:value this)
+                store
+                (make-sortable (eval (:sort-fn this))
+                               element))))
+
   Counted
   (number-of-elements [this]
     (number-of-elements (:value this)))

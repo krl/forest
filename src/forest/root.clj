@@ -1,12 +1,14 @@
 (ns forest.root
   (:use [forest.debug]
+        [forest.vhash] ;; temp
         [forest.store]))
 
 ;; protocols
 
 (defprotocol CollectionLike
   (conjoin* [this store element])
-  (disjoin* [this store element]))
+  (disjoin* [this store element])
+  (member*  [this store element]))
 
 (defprotocol Rangeable
   (range-of* [this store from to]))
@@ -34,6 +36,30 @@
                        (:store this)
                        element)))
   
+  (member* [this _ element]
+    (member* (:value this)
+             (:store this)
+             element))
+  
+  MapLike
+  (associate* [this _ key value]
+    (assoc this
+      :value (associate* (:value this)
+                         (:store this)
+                         key
+                         value)))
+
+  (dissociate* [this _ key]
+    (assoc this
+      :value (dissociate* (:value this)
+                         (:store this)
+                         key)))
+
+  (get-key* [this _ key]
+    (get-key* (:value this)
+              (:store this)
+              key))
+
   Rangeable
   (range-of* [this _ from to]
     (range-of* (:value this)
@@ -49,6 +75,31 @@
             (conjoin* top :_ element))
           root
           elements))
+
+(defn disjoin [root & elements]
+  (reduce (fn [top element]
+            (disjoin* top :_ element))
+          root
+          elements))
+
+(defn associate [root & kvs]
+  (assert (even? (count kvs)) "associate takes an even amount of key-values")
+  (reduce (fn [top [key value]]
+            (associate* top :_ key value))
+          root
+          (partition 2 kvs)))
+
+(defn get-key [root key]
+  (get-key* root :_ key))
+
+(defn dissociate [root & keys]
+  (reduce (fn [top key]
+            (dissociate* top :_ key))
+          root
+          keys))
+
+(defn member? [root element]
+  (member* root :_ element))
 
 (defn range-of [root from to]
   (range-of* root :_ from to))

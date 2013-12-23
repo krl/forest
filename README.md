@@ -6,6 +6,18 @@ Uses a key-value store as backend, storing sorted sequences as red-black trees. 
 
 Check out the tests for examples on how it works.
 
+# Red Black Trees for sorted sequences.
+
+Implementation and balancing function based on Okasakis implementaion in 'Purely Functional Data Structures' with some additional side-effect magic storing the nodes on disk when written, and only in memory when not.
+
+I'm concidering switching to 2-3 (finger?) trees to save some lookups and maybe have an more straightforward simple implementaion.
+
+# Hash array mapped tries for sets and maps
+
+Branching factor of 16 for now, but twiddlable. 
+This thing will need benchmarking.
+
+
 # Example
 
 From ns forest.root-test
@@ -28,12 +40,3 @@ From ns forest.root-test
         (is (= (range-of testroot2 nil nil)
                (range-of ref2 nil nil))))))
 ```
-
-# Red Black Tree implementation
-
-Implementation and balancing function based on Okasakis implementaion in 'Purely Functional Data Structures' with some additional side-effect magic storing the nodes on disk when written, and only in memory when not.
-
-# TODO
-
-* The trees (like Okasakis) are insert-only for now, will look at smk's implementaiton of removal.
-* HAMTs for sets and maps.
