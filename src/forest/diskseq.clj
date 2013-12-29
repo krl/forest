@@ -1,14 +1,14 @@
 (ns forest.diskseq
+  (:require [forest.two3 :as two3])
   (:use [forest.debug]
         [forest.root]
-        [forest.store]
-        [forest.redblack]))
+        [forest.store]))
 
 (defrecord DiskSeq [sort-fn value reverse?])
 
 (defmacro diskseq [sort-fn]
   `((fn [sort-fn#]
-      (DiskSeq. sort-fn# forest.redblack/empty-tree false))
+      (DiskSeq. sort-fn# two3/EMPTY false))
     '~sort-fn))
 
 (extend-type DiskSeq
@@ -16,17 +16,17 @@
   (conjoin* [this store element]
     (assoc this
       :value
-      (conjoin* (:value this)
-                store
-                (make-sortable (eval (:sort-fn this))
-                               element))))
+      (two3/add-at-root (:value this)
+                      store
+                      (two3/->Entry ((eval (:sort-fn this)) element)
+                                  element))))
   (disjoin* [this store element]
     (assoc this
       :value
-      (disjoin* (:value this)
-                store
-                (make-sortable (eval (:sort-fn this))
-                               element))))
+      (two3/delete (:value this)
+                 store
+                 (two3/->Entry ((eval (:sort-fn this)) element)
+                             element))))
 
   Counted
   (number-of-elements [this]
