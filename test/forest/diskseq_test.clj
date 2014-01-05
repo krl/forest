@@ -5,27 +5,6 @@
             [forest.diskseq])
   (:require [clojure.test :refer :all]))
 
-(do 
-  (defn test-print-tree [tree store]
-    (cond (= (type tree) (eval forest.two3.Leaf))          
-          (vec (map :sort-value (:bucket tree)))
-          
-          (= (type tree) (eval forest.two3.Node))
-          (vec (map #(test-print-tree (lookup store (:vhash %)) store)
-                    (:children tree)))
-          
-          :else
-          tree))
-  (let [empty-root (get-test-root (diskseq identity))
-        number     16
-        ;; added      (apply conjoin empty-root (range number))
-        ;; reverse    (apply conjoin empty-root (reverse (range number)))
-        shuffle    (apply conjoin empty-root (shuffle (range number)))
-        ]
-    ;; sorted insert balance
-    (test-print-tree (:value (:value shuffle))
-                     (:store empty-root))))
-
 (deftest addition
   (let [empty-root (get-test-root (diskseq identity))
         number     128
