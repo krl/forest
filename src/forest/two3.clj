@@ -44,6 +44,12 @@
                  (split-node node)))
     node))
 
+(defn remove-root-maybe [node store]
+  (if (< (num-children node)
+         *min-children*)
+    (lookup store (-> node :children first :vhash))
+    node))
+
 (extend-type Leaf
   Two3Tree
 
@@ -59,8 +65,10 @@
   (num-children [this]
     (count (:bucket this)))
 
+  (min-value [this]
+    (:sort-value (first (:bucket this))))
+
   (add-at-root [this store entry]
-    ;(println "add at root leaf")
     (split-root-maybe (add this store entry)
                       store))
 
@@ -71,15 +79,9 @@
     (assoc this :bucket (add-to-bucket (:bucket this) entry)))
 
   (delete [this store entry]
-    ;;(println "delete in leaf")
     (assoc this :bucket (delete-from-bucket (:bucket this) entry)))    
 
   (to-reference [this store]
-    ;; (println "leaf to ref")
-    ;; (print-variables this)
-    ;; (print-variables (-> this :bucket))
-    ;; (print-variables (-> this :bucket first))
-    ;; (print-variables (-> this :bucket first :sort-value))
     (to-heap! store this)
     (->ChildRef (vhash this)
                 (-> this :bucket first :sort-value)))
@@ -101,9 +103,11 @@
         merged          (merge-nodes merge-into-node underflow-child)
         result          (if (> (num-children merged) *max-children*)
                           (split-node merged)
-                          (list merged))]
+                          (list merged))
+        refers (map #(to-reference % store) result)
+        with-untouched (concat untouched refers)]
     (sort-by min-value
-             (concat untouched (map to-reference merged)))))
+             with-untouched)))
 
 (extend-type Node
   Two3Tree
@@ -114,53 +118,53 @@
 
   (merge-nodes    [this other]
     (assert (= (type this) (type other)))
-    (->Leaf (sort-by min-value 
+    (->Node (sort-by min-value 
                      (concat (:children this) (:children other)))))
 
   (num-children [this]
     (count (:children this)))
 
+  (min-value [this]
+    (min-value (first (:children this))))
+
   (add-at-root [this store entry]
     (split-root-maybe (add this store entry)
                       store))
- 
+  
   (add [this store entry]
-    (dbg-let [childref         (select-subtree (:children this) 
-                                               (:sort-value entry))
-              new-child        (add (lookup store (:vhash childref))
-                                    store entry)
-              untouched        (remove (partial = childref) (:children this))
-              ;; if there's an overflow, split-node the node in two
-              new-children     (if (> (num-children new-child) *max-children*)
-                                 (split-node new-child)
-                                 (list new-child))
-              new-references   (map #(to-reference % store) new-children)
-              sorted-childrefs (sort-by min-value (concat untouched new-references))]
+    (let [childref         (select-subtree (:children this) 
+                                           (:sort-value entry))
+          new-child        (add (lookup store (:vhash childref))
+                                store entry)
+          untouched        (remove (partial = childref) (:children this))
+          ;; if there's an overflow, split-node the node in two
+          new-children     (if (> (num-children new-child) *max-children*)
+                             (split-node new-child)
+                             (list new-child))
+          new-references   (map #(to-reference % store) new-children)
+          sorted-childrefs (sort-by min-value (concat untouched new-references))]
       (assoc this 
         :children sorted-childrefs)))
 
+  (delete-at-root [this store entry]
+    (remove-root-maybe
+     (delete this store entry)
+     store))
+
   (delete [this store entry]
-    (let [childref         (or (some #(and (<= (:min %) (:sort-value entry)) %)
-                                     ;; look at the largest values first
-                                     (reverse (:children this)))
-                               ;; else just pick the first
-                               (first (:children this)))
+    (let [childref     (select-subtree (:children this) 
+                                       (:sort-value entry))
           new-child        (delete (lookup store (:vhash childref))
                                    store entry)
           untouched        (remove (partial = childref) (:children this))
-          new-children     (if (< (num-children new-child) *min-children*)
-                             ;; merge into the leftmost subtree larger than 
-                             ;; or equal to min-value of new child
+          new-childrefs    (if (< (num-children new-child) *min-children*)
                              (merge-into-children new-child untouched store)
-                             (list new-child))
-          new-references   (map to-reference new-children)
-          sorted-childrefs (sort-by min-value (concat untouched new-references))]
+                             (conj untouched (to-reference new-child store)))
+          sorted-childrefs (sort-by min-value new-childrefs)]
       (assoc this
         :children sorted-childrefs)))
 
   (to-reference [this store]
-    ;; (println "node to ref")
-    ;; (print-variables this)
     (to-heap! store this)
     (->ChildRef (vhash this)
                 (-> this :children first :min)))
@@ -174,4 +178,7 @@
   (min-value [this]
     (:min this)))
 
-
+(extend-type Entry
+  Two3Tree
+  (min-value [this]
+    (:sort-value this)))
