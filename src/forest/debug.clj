@@ -7,7 +7,7 @@
 (defmacro dbg [form]
   `(let [result# ~form]
      (print '~form "\n=>")
-     (print (type '~form) "\n")
+     (print (type ~form) "\n")
      (pprint result#)
      result#))
 
