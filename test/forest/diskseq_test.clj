@@ -5,29 +5,41 @@
             [forest.diskseq])
   (:require [clojure.test :refer :all]))
 
-(defn test-print-tree [tree store]
-  (cond (= (type tree) forest.two3.Leaf)
-        (vec (map :sort-value (:bucket tree)))
-        
-        (= (type tree) forest.two3.Node)
-        (vec (map #(test-print-tree (lookup store (:vhash %)) store)
-                  (:children tree)))
-        
-        :else
-        tree))
+(do 
+  (defn test-print-tree [tree store]
+    (cond (= (type tree) (eval forest.two3.Leaf))
+          (vec (map :sort-value (:bucket tree)))
+          
+          (= (type tree) (eval forest.two3.Node))
+          (vec (map #(test-print-tree (lookup store (:vhash %)) store)
+                    (:children tree)))
+          
+          :else
+          tree))
+  (let [empty-root (get-test-root (diskseq identity))
+        number     16
+        ;; added      (apply conjoin empty-root (range number))
+        ;; reverse    (apply conjoin empty-root (reverse (range number)))
+        shuffle    (apply conjoin empty-root (shuffle (range number)))
+        ]
+    ;; sorted insert balance
+    (test-print-tree (:value (:value shuffle))
+                     (:store empty-root))))
 
 (deftest addition
   (let [empty-root (get-test-root (diskseq identity))
-        added      (apply conjoin empty-root (range 64))
-        reverse    (apply conjoin empty-root (range 63 -1 -1))
-        shuffle    (apply conjoin empty-root (shuffle (range 64)))]
+        number     4
+        added      (apply conjoin empty-root (range number))
+        reverse    (apply conjoin empty-root (reverse (range number)))
+        shuffle    (apply conjoin empty-root (shuffle (range number)))]
     ;; sorted insert balance
     (is (= (-> added :value :value :children second :min)
-           (-> reverse :value :value :children second :min)
-           32))
+           (/ number 2)))
+    (is (= (-> reverse :value :value :children second :min)
+           (/ number 2)))
     (is (= (< (* 64 1/3)
               (-> shuffle :value :value :children second :min)
-              (* 64 2/3))))))
+              (* 64 2/3)))))
 
 (comment (deftest deletion
   (let [empty-root  (get-test-root (diskseq identity))

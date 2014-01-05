@@ -23,10 +23,10 @@
   (disjoin* [this store element]
     (assoc this
       :value
-      (two3/delete (:value this)
-                 store
-                 (two3/->Entry ((eval (:sort-fn this)) element)
-                             element))))
+      (two3/delete-at-root (:value this)
+                           store
+                           (two3/->Entry ((eval (:sort-fn this)) element)
+                                         element))))
 
   Counted
   (number-of-elements [this]
